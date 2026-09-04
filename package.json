@@ -16,7 +16,8 @@
     "check:storage": "tsx src/lib/storage/check.ts",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
-    "db:nuke": "docker compose -f docker-compose.dev.yml down -v"
+    "db:nuke": "docker compose -f docker-compose.dev.yml down -v",
+    "reset": "tsx src/db/reset.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.716.0",
