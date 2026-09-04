@@ -21,7 +21,23 @@ import type { PutTarget, StorageDriver, StoredObject } from "./types";
    unforgeability. It just costs a hop through Node.
    ============================================================ */
 
-const ROOT = resolve(process.cwd(), process.env.STORAGE_FS_ROOT || ".vault-store");
+/* Resolved lazily, not at module scope. Two reasons, both real:
+ *
+ * · Turbopack statically traces filesystem access. A dynamic resolve()
+ *   at import time makes it trace the WHOLE project into the standalone
+ *   output, which is the artefact we copy onto the node. The ignore
+ *   comment tells it this path is deliberate.
+ * · Module scope runs at import, which can be before .env.local has
+ *   been read by a CLI entrypoint. A function reads it when asked.
+ */
+let cachedRoot: string | null = null;
+function root(): string {
+  if (cachedRoot) return cachedRoot;
+  return (cachedRoot = resolve(
+    /* turbopackIgnore: true */ process.cwd(),
+    process.env.STORAGE_FS_ROOT || ".vault-store",
+  ));
+}
 
 /* A missing signing key is fatal in production — unsigned download URLs
  * would mean anything on the tailnet could read any file by guessing a
@@ -45,15 +61,15 @@ function toPath(key: string): string {
   if (!key || key.startsWith("/") || key.includes("\0") || /^[a-zA-Z]:/.test(key)) {
     throw new Error(`Illegal object key: ${JSON.stringify(key)}`);
   }
-  const full = resolve(ROOT, key.split("/").join(sep));
-  if (full !== ROOT && !full.startsWith(ROOT + sep)) {
+  const full = resolve(root(), key.split("/").join(sep));
+  if (full !== root() && !full.startsWith(root() + sep)) {
     throw new Error(`Object key escapes the store root: ${JSON.stringify(key)}`);
   }
   return full;
 }
 
 function toKey(fullPath: string): string {
-  return fullPath.slice(ROOT.length + 1).split(sep).join("/");
+  return fullPath.slice(root().length + 1).split(sep).join("/");
 }
 
 export function sign(key: string, expiresAtMs: number): string {
@@ -74,17 +90,17 @@ export class FsDriver implements StorageDriver {
 
   async health() {
     try {
-      await mkdir(ROOT, { recursive: true });
-      const s = await stat(ROOT);
-      if (!s.isDirectory()) return { ok: false, detail: `${ROOT} is not a directory` };
-      return { ok: true, detail: ROOT };
+      await mkdir(root(), { recursive: true });
+      const s = await stat(/* turbopackIgnore: true */ root());
+      if (!s.isDirectory()) return { ok: false, detail: `${root()} is not a directory` };
+      return { ok: true, detail: root() };
     } catch (e) {
       return { ok: false, detail: e instanceof Error ? e.message : String(e) };
     }
   }
 
   async *list(prefix = ""): AsyncGenerator<StoredObject> {
-    const start = prefix ? toPath(prefix) : ROOT;
+    const start = prefix ? toPath(prefix) : root();
     /* Explicit stack rather than recursion: a deep tree of photos should
      * not be able to blow the call stack, and this lets a caller stop
      * iterating early without unwinding anything. */
@@ -111,7 +127,7 @@ export class FsDriver implements StorageDriver {
 
   async head(key: string): Promise<StoredObject | null> {
     try {
-      const s = await stat(toPath(key));
+      const s = await stat(/* turbopackIgnore: true */ toPath(key));
       return s.isFile() ? { key, bytes: s.size, modifiedAt: s.mtime } : null;
     } catch {
       return null;
@@ -134,14 +150,18 @@ export class FsDriver implements StorageDriver {
   }
 
   async read(key: string): Promise<ReadableStream<Uint8Array>> {
-    return Readable.toWeb(createReadStream(toPath(key))) as ReadableStream<Uint8Array>;
+    /* Reading an arbitrary key IS the job of a file store, so Turbopack
+     * cannot statically scope this and would otherwise trace the entire
+     * project into the standalone output. The path is already validated
+     * by toPath(), which refuses anything outside the store root. */
+    return Readable.toWeb(createReadStream(/* turbopackIgnore: true */ toPath(key))) as ReadableStream<Uint8Array>;
   }
 
   async write(key: string, body: ReadableStream<Uint8Array> | Uint8Array) {
     const full = toPath(key);
     await mkdir(dirname(full), { recursive: true });
     const source = body instanceof Uint8Array ? Readable.from(Buffer.from(body)) : Readable.fromWeb(body as never);
-    await pipeline(source, createWriteStream(full));
+    await pipeline(source, createWriteStream(/* turbopackIgnore: true */ full));
   }
 
   async move(fromKey: string, toKey_: string) {
@@ -174,7 +194,7 @@ export class FsDriver implements StorageDriver {
  *  directories do not exist at all. Stops at the root. */
 async function pruneEmpty(dir: string) {
   let cur = dir;
-  while (cur.startsWith(ROOT + sep)) {
+  while (cur.startsWith(root() + sep)) {
     try {
       const entries = await readdir(cur);
       if (entries.length) return;
