@@ -1340,3 +1340,45 @@ button {
 .prev {
   height: 190px;
 }
+
+/* ---------- upload progress ----------
+   Bottom-left so it never sits under the readout, and it stays up for
+   the whole batch. A 2 GB archive with no feedback is indistinguishable
+   from a hung app, which is exactly the size of file this vault is for. */
+.uploading {
+  position: fixed;
+  left: 1.2rem;
+  bottom: 1.2rem;
+  z-index: 85;
+  width: min(300px, calc(100vw - 2.4rem));
+  background: var(--panel);
+  border: 1px solid var(--amber);
+  padding: 0.6rem 0.7rem;
+}
+.up-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.16em;
+  color: var(--amber);
+}
+.up-name {
+  font-size: 0.8rem;
+  margin: 0.3rem 0 0.45rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt);
+}
+.up-track {
+  height: 4px;
+  border: 1px solid var(--stroke-hi);
+}
+.up-track i {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  transition: width 0.12s linear;
+}

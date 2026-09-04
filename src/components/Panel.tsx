@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   acceptSuggestionAction,
   createFolderAction,
@@ -53,6 +54,83 @@ type View = "map" | "list";
  *  distinguishable and a seventh would be a lie. */
 const PATTERNS = ["f1", "f2", "f3", "f4", "f5", "f6"] as const;
 
+/** One queued upload. `folder` is set only for files that came out of a
+ *  dropped directory; loose files carry null and land in the Inbox. */
+type Upload = { file: File; folder: string | null };
+type Progress = { done: number; total: number; name: string; pct: number; bytes: number };
+
+/**
+ * XMLHttpRequest rather than fetch, for one reason: fetch cannot report
+ * upload progress. A 2 GB archive with no feedback is indistinguishable
+ * from a hung app, and this is exactly the kind of file this vault is
+ * for.
+ *
+ * It also sets Content-Length itself, which fetch refuses to let you do
+ * — and the route needs that header to check the allocation BEFORE
+ * writing a byte rather than after.
+ */
+function putFile(item: Upload, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const q = new URLSearchParams({ name: item.file.name });
+    if (item.folder) q.set("folder", item.folder);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/upload?${q}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let detail = `HTTP ${xhr.status}`;
+      try {
+        const body = JSON.parse(xhr.responseText);
+        detail = body.detail || body.error || detail;
+      } catch {
+        /* not JSON — keep the status */
+      }
+      reject(new Error(detail));
+    };
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.send(item.file);
+  });
+}
+
+/**
+ * Turns dropped directories into a flat list of files, each remembering
+ * the top-level folder it came from.
+ *
+ * readEntries() returns at most 100 entries per call and signals the end
+ * with an empty batch, which is why this loops rather than reading once.
+ * Getting that wrong silently uploads the first hundred photos of a
+ * folder and drops the rest.
+ */
+async function walkEntries(entries: FileSystemEntry[]): Promise<Upload[]> {
+  const out: Upload[] = [];
+
+  const walk = async (entry: FileSystemEntry, folder: string | null): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((res, rej) =>
+        (entry as FileSystemFileEntry).file(res, rej),
+      );
+      out.push({ file, folder });
+      return;
+    }
+    if (!entry.isDirectory) return;
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej));
+      if (!batch.length) break;
+      /* Nested subfolders collapse into their top-level parent — the
+         store is two levels deep by design, and a dropped tree should
+         not be able to smuggle a deeper one in. */
+      for (const child of batch) await walk(child, folder);
+    }
+  };
+
+  for (const e of entries) await walk(e, e.isDirectory ? e.name : null);
+  return out;
+}
+
 export default function Panel(props: PanelData) {
   const [scope, setScope] = useState<Scope>(null);
   const [q, setQ] = useState("");
@@ -62,8 +140,11 @@ export default function Panel(props: PanelData) {
   const [open, setOpen] = useState<Set<string>>(new Set([props.tree[0]?.path ?? ""]));
   const [palette, setPalette] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
   const [pending, start] = useTransition();
+  const pickerRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   const say = useCallback((text: string, bad = false) => {
     setToast({ text, bad });
@@ -116,7 +197,55 @@ export default function Panel(props: PanelData) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  /* ---------- drag and drop upload ---------- */
+  /* ---------- uploading ----------
+     Sequential, not parallel. The route deduplicates a name against
+     whatever is already at the destination, so two uploads racing can
+     both be told "nothing called this exists yet" and one of them ends
+     up as "file (2)" for no reason. Slower and correct beats faster
+     and occasionally wrong. */
+  const uploadAll = useCallback(
+    async (items: Upload[]) => {
+      if (!items.length) return;
+
+      const totalBytes = items.reduce((n, i) => n + i.file.size, 0);
+      if (totalBytes > props.map.freeBytes) {
+        say(`NEEDS ${fmtBytes(totalBytes)} · ONLY ${fmtBytes(props.map.freeBytes)} FREE`, true);
+        return;
+      }
+
+      const failed: string[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        setProgress({ done: i, total: items.length, name: it.file.name, pct: 0, bytes: totalBytes });
+        try {
+          await putFile(it, (pct) =>
+            setProgress({ done: i, total: items.length, name: it.file.name, pct, bytes: totalBytes }),
+          );
+        } catch (e) {
+          /* One bad file must not abandon the other forty. Collect and
+             report at the end. */
+          failed.push(`${it.file.name}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      setProgress(null);
+
+      if (failed.length === items.length) {
+        say(failed[0].slice(0, 80), true);
+      } else if (failed.length) {
+        say(`${items.length - failed.length} OF ${items.length} · ${failed.length} FAILED`, true);
+      } else {
+        const folders = new Set(items.map((i) => i.folder).filter(Boolean));
+        say(
+          folders.size === 1
+            ? `${items.length} TO ${[...folders][0]!.toUpperCase()}`
+            : `${items.length} TO INBOX`,
+        );
+      }
+      router.refresh();
+    },
+    [props.map.freeBytes, say, router],
+  );
+
   useEffect(() => {
     const over = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes("Files")) return;
@@ -129,23 +258,16 @@ export default function Panel(props: PanelData) {
     const drop = async (e: DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const files = Array.from(e.dataTransfer?.files ?? []);
-      if (!files.length) return;
-      for (const f of files) {
-        say(`UPLOADING ${f.name}`);
-        const res = await fetch(`/api/upload?name=${encodeURIComponent(f.name)}`, {
-          method: "POST",
-          body: f,
-          headers: { "content-length": String(f.size) },
-        });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          say(body.detail || body.error || "UPLOAD FAILED", true);
-          return;
-        }
-      }
-      say(`${files.length} TO INBOX`);
-      window.location.reload();
+      if (!e.dataTransfer) return;
+      /* Must read the entries synchronously — the DataTransfer is
+         neutered the moment this handler yields. */
+      const entries = Array.from(e.dataTransfer.items)
+        .map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null))
+        .filter((x): x is FileSystemEntry => !!x);
+      const loose = Array.from(e.dataTransfer.files);
+
+      const items = entries.length ? await walkEntries(entries) : loose.map((file) => ({ file, folder: null }));
+      await uploadAll(items);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("dragleave", leave);
@@ -155,7 +277,7 @@ export default function Panel(props: PanelData) {
       window.removeEventListener("dragleave", leave);
       window.removeEventListener("drop", drop);
     };
-  }, [say]);
+  }, [uploadAll]);
 
   const run = (fn: () => Promise<{ ok: boolean; message: string }>) =>
     start(async () => {
@@ -241,6 +363,7 @@ export default function Panel(props: PanelData) {
             tree={props.tree}
             suggestionsOn={props.suggestionsOn}
             pending={pending}
+            onAdd={() => pickerRef.current?.click()}
             onAccept={(id) => run(() => acceptSuggestionAction(id))}
             onFile={(id, folder) => run(() => fileAction(id, folder))}
           />
@@ -346,7 +469,37 @@ export default function Panel(props: PanelData) {
         />
       )}
 
-      {dragging && <div className="drop">Drop to inbox</div>}
+      {/* One picker for both buttons. `multiple` is the whole point of
+          the control; a file store where you add things one at a time
+          is a file store you stop using. */}
+      <input
+        ref={pickerRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []).map((file) => ({ file, folder: null }));
+          e.target.value = "";
+          void uploadAll(files);
+        }}
+      />
+
+      {dragging && <div className="drop">Drop files or a folder</div>}
+
+      {progress && (
+        <div className="uploading">
+          <div className="up-head">
+            <span>
+              UPLOADING {progress.done + 1} / {progress.total}
+            </span>
+            <span>{fmtBytes(progress.bytes)}</span>
+          </div>
+          <div className="up-name">{progress.name}</div>
+          <div className="up-track">
+            <i style={{ width: `${progress.pct}%` }} />
+          </div>
+        </div>
+      )}
       <div className="toast" data-on={!!toast} data-bad={toast?.bad ? "true" : undefined}>
         {toast?.text ?? ""}
       </div>
@@ -558,6 +711,7 @@ function Inbox({
   pending,
   onAccept,
   onFile,
+  onAdd,
 }: {
   items: UnfiledRow[];
   tree: TreeNode[];
@@ -565,6 +719,7 @@ function Inbox({
   pending: boolean;
   onAccept: (id: number) => void;
   onFile: (id: number, folder: string) => void;
+  onAdd: () => void;
 }) {
   /* Flattened folder list for the manual override dropdown. */
   const paths = useMemo(() => {
@@ -582,6 +737,9 @@ function Inbox({
         <div className="in-h">
           <span className="ttl">Inbox</span>
           <span className="note">CLEAR · 0 HELD</span>
+          <button className="btn g" onClick={onAdd}>
+            Add files
+          </button>
         </div>
       </div>
     );
@@ -593,6 +751,9 @@ function Inbox({
         <span className="ttl">Inbox</span>
         <span className="badge">{items.length} HELD</span>
         <span className="note">OLDEST {held(items[0].addedAt)}</span>
+        <button className="btn g" onClick={onAdd}>
+          Add files
+        </button>
       </div>
 
       {items.map((u) => {
