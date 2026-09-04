@@ -236,25 +236,150 @@ button {
   }
 }
 
-/* ---------- layout ---------- */
+/* ---------- layout ----------
+   Three real layouts, not one with pieces switched off.
+
+     > 1180   three columns, everything permanent
+     781-1180 tree stays, detail becomes a right slide-over
+     <= 780   tree becomes a left drawer, detail becomes a bottom sheet
+
+   The earlier version simply display:none'd the sidebar and the detail
+   pane below those widths, which on a phone removed the folder tree,
+   the allocation gauge, the folder controls and every file's metadata
+   — most of the app. Same markup here; the panels move rather than
+   disappear. */
 .app {
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr) 304px;
 }
+
+/* the hamburger, only ever visible on a phone */
+.navbtn {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 38px;
+  height: 38px;
+  margin: -6px 0 -6px -8px;
+  padding: 0 8px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.navbtn span {
+  display: block;
+  height: 1.5px;
+  background: var(--txt);
+}
+.sheetclose {
+  display: none;
+}
+.scrim-nav,
+.scrim-sheet {
+  display: none;
+}
+
 @media (max-width: 1180px) {
   .app {
     grid-template-columns: 222px minmax(0, 1fr);
   }
+  /* A slide-over rather than a hidden column: the metadata, the cold
+     flag and the actions are the reason you selected the row. */
   .detail {
-    display: none;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(340px, 92vw);
+    z-index: 70;
+    background: var(--panel);
+    border-left: 1px solid var(--stroke-hi);
+    box-shadow: -20px 0 50px -28px #000;
+    overflow-y: auto;
+    transform: translateX(101%);
+    transition: transform 0.2s ease;
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  }
+  [data-sheet="true"] .detail {
+    transform: none;
+  }
+  [data-sheet="true"] .scrim-sheet {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 69;
+    background: rgba(4, 6, 8, 0.55);
+  }
+  .sheetclose {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.7rem;
+    padding: 0.5rem;
+    background: none;
+    border: 1px solid var(--stroke-hi);
+    color: var(--dim);
+    cursor: pointer;
+    font-family: var(--cond);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
   }
 }
+
 @media (max-width: 780px) {
   .app {
     grid-template-columns: 1fr;
   }
+
+  .navbtn {
+    display: flex;
+  }
+
   .nav {
-    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(280px, 86vw);
+    z-index: 72;
+    background: var(--panel);
+    border-right: 1px solid var(--stroke-hi);
+    box-shadow: 20px 0 50px -28px #000;
+    overflow-y: auto;
+    transform: translateX(-101%);
+    transition: transform 0.2s ease;
+    padding-top: calc(0.95rem + env(safe-area-inset-top));
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+    min-height: 0;
+  }
+  [data-nav="true"] .nav {
+    transform: none;
+  }
+  [data-nav="true"] .scrim-nav {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 71;
+    background: rgba(4, 6, 8, 0.55);
+  }
+
+  /* The detail becomes a sheet from the bottom — a right slide-over on
+     a 390px screen is just a second full screen with a worse gesture. */
+  .detail {
+    top: auto;
+    right: 0;
+    left: 0;
+    width: auto;
+    max-height: 86vh;
+    border-left: 0;
+    border-top: 1px solid var(--stroke-hi);
+    box-shadow: 0 -20px 50px -28px #000;
+    transform: translateY(101%);
+  }
+  [data-sheet="true"] .detail {
+    transform: none;
   }
 }
 
@@ -1381,4 +1506,218 @@ button {
   height: 100%;
   background: var(--amber);
   transition: width 0.12s linear;
+}
+
+/* ============================================================
+   PHONE
+
+   Everything below is about the two things a desktop panel gets for
+   free and a phone does not: fingers, and width.
+
+   Touch targets go to ~40px. The desktop panel is deliberately dense
+   — 0.3rem of padding on a control is right for a mouse and useless
+   for a thumb. Density is not the identity here; the instrument
+   language survives a bigger tap area.
+
+   Hover does not exist, so nothing may depend on it. The reticle and
+   the block tooltip are mouse-only and simply do not appear; tapping
+   a block selects it and opens the sheet, which tells you more than
+   the tooltip did.
+   ============================================================ */
+@media (max-width: 780px) {
+  body {
+    font-size: 14px;
+  }
+
+  /* ---- top rail ---- */
+  .bar {
+    gap: 0.7rem;
+    padding: calc(0.5rem + env(safe-area-inset-top)) 0.9rem 0.5rem;
+  }
+  .mark {
+    font-size: 1.05rem;
+    letter-spacing: 0.24em;
+  }
+  /* The designation is the first thing to go — it is provenance, not
+     information you act on. */
+  .desig {
+    display: none;
+  }
+  .lamps {
+    gap: 0.7rem;
+    width: 100%;
+    margin-left: 0;
+    order: 3;
+    border-top: 1px solid var(--stroke);
+    padding-top: 0.45rem;
+  }
+
+  .main {
+    padding: 0.8rem 0.9rem calc(3rem + env(safe-area-inset-bottom));
+  }
+
+  /* ---- controls sized for a thumb ---- */
+  .btn,
+  .seg2 button,
+  .tog {
+    min-height: 38px;
+    padding-left: 0.9rem;
+    padding-right: 0.9rem;
+  }
+  .fold {
+    min-height: 40px;
+    font-size: 0.9rem;
+  }
+  .foldbar .mini {
+    min-height: 38px;
+  }
+  .row {
+    min-height: 52px;
+    padding: 0.6rem 0.5rem;
+  }
+  .search input {
+    min-height: 44px;
+    font-size: 16px; /* under 16px, iOS zooms the whole page on focus */
+  }
+  .pal input {
+    font-size: 16px;
+  }
+  /* No keyboard, so the shortcut hint is noise. */
+  .kbd {
+    display: none;
+  }
+  .search input {
+    padding-right: 0.85rem;
+  }
+
+  /* ---- the map ---- */
+  .full {
+    height: 300px;
+  }
+  .blk .t {
+    font-size: 0.68rem;
+    padding: 0.22rem 0.28rem;
+  }
+  .blk .t s {
+    font-size: 0.46rem;
+  }
+  /* The scale eats a fifth of a 390px screen and cannot be read at
+     that size anyway. The gauge in the drawer carries the same fact. */
+  .scale {
+    display: none;
+  }
+  .ret {
+    display: none;
+  }
+  .legend {
+    gap: 0.6rem;
+    font-size: 0.68rem;
+  }
+  .coldline {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* ---- head ---- */
+  .head h2 {
+    font-size: 1.25rem;
+  }
+  .head .sp {
+    display: none;
+  }
+  .head .sub {
+    width: 100%;
+  }
+
+  /* ---- inbox ---- */
+  .un {
+    gap: 0.5rem;
+    padding: 0.7rem;
+  }
+  .un .body {
+    flex: 1 1 100%;
+  }
+  /* Buttons share the row rather than stacking into a column of
+     full-width slabs — File and Alt are a pair. */
+  .un .btn,
+  .un select {
+    flex: 1 1 40%;
+  }
+  .in-h {
+    gap: 0.5rem;
+  }
+  .in-h .note {
+    margin-left: 0;
+    order: 4;
+  }
+
+  /* ---- index rows ---- */
+  .row .nm {
+    flex: 1 1 100%;
+    font-size: 0.9rem;
+    white-space: normal;
+  }
+  /* The added date is the least useful column on a narrow screen and
+     the first to make the name wrap badly. Size stays. */
+  .row .m:last-child {
+    display: none;
+  }
+  .row .k {
+    font-size: 0.52rem;
+  }
+
+  /* ---- detail sheet ---- */
+  .detail {
+    padding: 0.9rem 0.9rem calc(2rem + env(safe-area-inset-bottom));
+  }
+  .prev {
+    height: 220px;
+  }
+  .acts .btn {
+    flex: 1 1 45%;
+  }
+
+  /* ---- upload progress clears the home indicator ---- */
+  .uploading {
+    left: 0.9rem;
+    right: 0.9rem;
+    width: auto;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+  .toast {
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 1.8rem);
+    text-align: center;
+  }
+
+  /* ---- palette ---- */
+  .scrim {
+    padding: 4vh 0.7rem;
+  }
+  .pal .it {
+    min-height: 44px;
+  }
+}
+
+/* Very narrow — 360px and down. */
+@media (max-width: 380px) {
+  .mark {
+    font-size: 0.95rem;
+    letter-spacing: 0.18em;
+  }
+  .lamp {
+    font-size: 0.5rem;
+  }
+  .full {
+    height: 260px;
+  }
+}
+
+/* A coarse pointer anywhere, including a tablet wide enough to keep
+   the desktop grid. Hover-only affordances are dead weight there. */
+@media (pointer: coarse) {
+  .ret,
+  .hint {
+    display: none;
+  }
 }

@@ -139,6 +139,11 @@ export default function Panel(props: PanelData) {
   const [selId, setSelId] = useState<number | null>(props.rows[0]?.id ?? null);
   const [open, setOpen] = useState<Set<string>>(new Set([props.tree[0]?.path ?? ""]));
   const [palette, setPalette] = useState(false);
+  /* Narrow screens cannot afford three permanent columns, so the tree
+     becomes a drawer and the detail pane becomes a sheet. Both are
+     inert above the breakpoint — the same markup, different CSS. */
+  const [navOpen, setNavOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -288,9 +293,24 @@ export default function Panel(props: PanelData) {
   const scopeLabel = scope ? (scope.sub ?? scope.top) : "All";
   const scopedBytes = rows.reduce((n, r) => n + r.bytes, 0);
 
+  /* Selecting anything is what opens the sheet on a phone. On desktop
+     the pane is always there and this flag is ignored. */
+  const select = useCallback((id: number) => {
+    setSelId(id);
+    setSheetOpen(true);
+  }, []);
+
   return (
-    <div className="z">
+    <div className="z" data-nav={navOpen} data-sheet={sheetOpen}>
       <div className="bar">
+        <button
+          className="navbtn"
+          onClick={() => setNavOpen((v) => !v)}
+          aria-label="Volumes"
+          aria-expanded={navOpen}
+        >
+          <span /><span /><span />
+        </button>
         <div className="mark">Vault</div>
         <div className="desig">
           VLT-105 · STORE · {props.driver.toUpperCase()}
@@ -333,6 +353,7 @@ export default function Panel(props: PanelData) {
           }
           onScope={(s) => {
             setScope(s);
+            setNavOpen(false);
             say(s ? `${s.top}${s.sub ? "/" + s.sub : ""}`.toUpperCase() : "ALL");
           }}
         />
@@ -396,13 +417,13 @@ export default function Panel(props: PanelData) {
               selId={selId}
               onPick={(id) => {
                 if (id === null) return;
-                setSelId(id);
+                select(id);
                 setView("list");
               }}
               onGroup={(top) => setScope({ top, sub: null })}
             />
           ) : (
-            <Index rows={rows} patternOf={patternOf} selId={selected?.id ?? null} onPick={setSelId} />
+            <Index rows={rows} patternOf={patternOf} selId={selected?.id ?? null} onPick={select} />
           )}
         </main>
 
@@ -410,6 +431,7 @@ export default function Panel(props: PanelData) {
           row={selected}
           allocation={props.map.allocationBytes}
           pending={pending}
+          onClose={() => setSheetOpen(false)}
           onShare={(id) =>
             start(async () => {
               const r = await shareAction(id);
@@ -461,7 +483,7 @@ export default function Panel(props: PanelData) {
           onPick={(id) => {
             setScope(null);
             setQ("");
-            setSelId(id);
+            select(id);
             setView("list");
           }}
           onCold={() => setCold((c) => !c)}
@@ -483,6 +505,11 @@ export default function Panel(props: PanelData) {
           void uploadAll(files);
         }}
       />
+
+      {/* Tap-outside-to-close, and it keeps the drawer from being a
+          trap on a phone. Inert above the breakpoint. */}
+      <div className="scrim-nav" onClick={() => setNavOpen(false)} aria-hidden="true" />
+      <div className="scrim-sheet" onClick={() => setSheetOpen(false)} aria-hidden="true" />
 
       {dragging && <div className="drop">Drop files or a folder</div>}
 
@@ -1070,6 +1097,7 @@ function Detail({
   row,
   allocation,
   pending,
+  onClose,
   onShare,
   onRevoke,
   onPin,
@@ -1079,6 +1107,7 @@ function Detail({
   row: ObjectRow | null;
   allocation: number;
   pending: boolean;
+  onClose: () => void;
   onShare: (id: number) => void;
   onRevoke: (id: number) => void;
   onPin: (id: number, pinned: boolean) => void;
@@ -1116,6 +1145,11 @@ function Detail({
 
   return (
     <aside className="detail">
+      {/* Only rendered as a control below the breakpoint; on desktop the
+          pane is permanent and there is nothing to close. */}
+      <button className="sheetclose" onClick={onClose} aria-label="Close">
+        Close
+      </button>
       <h3>{row.name}</h3>
       <div className="path">{(row.folderPath ?? "INBOX").toUpperCase()}</div>
 

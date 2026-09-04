@@ -39,6 +39,11 @@ export const viewport: Viewport = {
    * that stops a white flash on load and colours the phone chrome. */
   themeColor: "#080A0C",
   colorScheme: "dark",
+  /* Lets the panel run under the notch and the home indicator, which
+   * is only safe because every fixed element pads itself with
+   * env(safe-area-inset-*). Without those it would put the top rail
+   * behind the notch. */
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

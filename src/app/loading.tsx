@@ -15,6 +15,15 @@ export default function Loading() {
   return (
     <div className="z" aria-busy="true" aria-label="Reading the index">
       <div className="bar">
+        {/* Present but inert. Without it the top rail is one control
+            narrower than the panel it precedes, and the wordmark jumps
+            sideways the moment the data lands — the exact shift this
+            whole file exists to avoid. */}
+        <span className="navbtn" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
         <div className="mark">Vault</div>
         <div className="desig">VLT-105 · STORE · —</div>
         <div className="lamps">
