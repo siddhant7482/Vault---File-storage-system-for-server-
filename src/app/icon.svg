@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Vault's mark: the plot. Four blocks of unequal area inside a
+       frame, because that is what the app actually shows you — the
+       shape of what you are storing, drawn to scale. Amber block is
+       the inbox, the one thing that ever needs you. -->
+  <rect width="32" height="32" fill="#080A0C"/>
+  <g stroke="#080A0C" stroke-width="1.5">
+    <rect x="4"  y="4"  width="14" height="15" fill="#CEE4F0" fill-opacity="0.34"/>
+    <rect x="18" y="4"  width="10" height="9"  fill="#CEE4F0" fill-opacity="0.16"/>
+    <rect x="18" y="13" width="10" height="6"  fill="#CEE4F0" fill-opacity="0.24"/>
+    <rect x="4"  y="19" width="24" height="9"  fill="#FFA92E"/>
+  </g>
+  <!-- corner brackets, opposite corners, as everywhere else -->
+  <path d="M2 6V2h4M30 26v4h-4" fill="none" stroke="#2F3A43" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,1272 @@
+/* ============================================================
+   VAULT — glass cockpit
+
+   Modernist instrument panel. Thin strokes, hard corners, tick
+   scales, corner brackets. Nothing here is decorated; everything is
+   measured.
+
+   TWO RULES THE WHOLE SHEET OBEYS
+
+   1. Almost no colour. Folders are told apart by TONE and FILL
+      PATTERN — solid, hatch, dot grid, rule — never by hue. Colour
+      is reserved for exactly two states: amber means something needs
+      you, ice means dead weight. If there is colour on this panel,
+      it is telling you something.
+
+   2. Almost no prose. Labels are codes, numbers are monospaced and
+      tabular, and magnitude is read off a scale rather than a
+      sentence.
+
+   Deliberately not the hub: that panel is warm bone, screwed
+   together, with physical pads and faders. This is a lit screen —
+   cold, flat, no material at all.
+   ============================================================ */
+
+:root {
+  --void: #080a0c;
+  --panel: #0d1013;
+  --panel-2: #12161a;
+  --raise: #171c21;
+  --stroke: #212930;
+  --stroke-hi: #2f3a43;
+  --txt: #dce4e9;
+  --dim: #7b8892;
+  --dim-2: #4b565e;
+
+  /* the only two hues on the panel, both of them states */
+  --amber: #ffa92e;
+  --ice: #7fd4ff;
+
+  --cond: var(--font-cond), system-ui, sans-serif;
+  --ui: var(--font-ui), system-ui, sans-serif;
+  --mono: var(--font-mono), ui-monospace, monospace;
+
+  --bar-h: 45px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--void);
+}
+
+body {
+  margin: 0;
+  color: var(--txt);
+  font-family: var(--ui);
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Faint scan lines and one cold source. Enough to read as a lit screen
+   rather than a flat fill; not enough to notice. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(70rem 50rem at 12% -14%, rgba(150, 200, 230, 0.045), transparent 62%),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 3px);
+}
+
+.z {
+  position: relative;
+  z-index: 2;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+.cap {
+  font-family: var(--cond);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim-2);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Corner brackets — opposite corners only, the way a HUD frames a
+   target. Four would be fussy. */
+.brk {
+  position: relative;
+}
+.brk::before,
+.brk::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--stroke-hi);
+  pointer-events: none;
+}
+.brk::before {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.brk::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+
+/* ---------- fill patterns: how folders are told apart ----------
+   Assigned by position in the tree, not by name, so a new folder gets
+   a pattern without anyone editing this file. */
+.f1 {
+  background-color: rgba(206, 228, 240, 0.34);
+}
+.f2 {
+  background-color: rgba(206, 228, 240, 0.13);
+  background-image: repeating-linear-gradient(45deg, rgba(206, 228, 240, 0.3) 0 1.5px, transparent 1.5px 6px);
+}
+.f3 {
+  background-color: rgba(206, 228, 240, 0.07);
+  background-image: radial-gradient(rgba(206, 228, 240, 0.46) 0.9px, transparent 1px);
+  background-size: 6px 6px;
+}
+.f4 {
+  background-color: rgba(206, 228, 240, 0.2);
+  background-image: repeating-linear-gradient(90deg, rgba(206, 228, 240, 0.34) 0 1.5px, transparent 1.5px 7px);
+}
+.f5 {
+  background-color: rgba(206, 228, 240, 0.1);
+  background-image: repeating-linear-gradient(135deg, rgba(206, 228, 240, 0.26) 0 1.5px, transparent 1.5px 5px);
+}
+.f6 {
+  background-color: rgba(206, 228, 240, 0.26);
+  background-image: repeating-linear-gradient(0deg, rgba(206, 228, 240, 0.14) 0 2px, transparent 2px 6px);
+}
+
+.sw {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 1px solid var(--stroke-hi);
+  display: inline-block;
+}
+
+/* ---------- top rail ---------- */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 0.55rem 1.2rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--stroke);
+  flex-wrap: wrap;
+}
+.mark {
+  font-family: var(--cond);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.desig {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.2em;
+  color: var(--dim-2);
+  border-left: 1px solid var(--stroke);
+  padding-left: 1.1rem;
+}
+.lamps {
+  margin-left: auto;
+  display: flex;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+.lamp {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+.lamp i {
+  width: 5px;
+  height: 5px;
+  background: var(--txt);
+  box-shadow: 0 0 7px rgba(220, 228, 233, 0.7);
+}
+.lamp.warn i {
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber);
+  animation: blink 2.4s steps(1) infinite;
+}
+.lamp.dead i {
+  background: var(--dim-2);
+  box-shadow: none;
+}
+@keyframes blink {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  61%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+/* ---------- layout ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 304px;
+}
+@media (max-width: 1180px) {
+  .app {
+    grid-template-columns: 222px minmax(0, 1fr);
+  }
+  .detail {
+    display: none;
+  }
+}
+@media (max-width: 780px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .nav {
+    display: none;
+  }
+}
+
+/* ---------- folder tree ---------- */
+.nav {
+  padding: 0.95rem 0.7rem 2rem;
+  border-right: 1px solid var(--stroke);
+  min-height: calc(100vh - var(--bar-h));
+}
+.nav .cap {
+  padding: 0 0.45rem 0.5rem;
+  display: block;
+}
+.fold {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  padding: 0.36rem 0.45rem;
+  font-family: var(--ui);
+  font-size: 0.84rem;
+  color: var(--dim);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.fold:hover {
+  background: var(--panel-2);
+  color: var(--txt);
+}
+.fold[aria-current="true"] {
+  background: var(--raise);
+  border-color: var(--stroke-hi);
+  color: var(--txt);
+}
+.fold .tw {
+  width: 10px;
+  flex: none;
+  font-size: 0.58rem;
+  color: var(--dim-2);
+  text-align: center;
+  transition: transform 0.14s;
+}
+.fold[data-open="true"] .tw {
+  transform: rotate(90deg);
+}
+.fold .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fold .n {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  color: var(--dim-2);
+  font-variant-numeric: tabular-nums;
+}
+.fold.inbox .n {
+  color: var(--amber);
+}
+.fold.inbox .sw {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+.kids .fold {
+  padding-left: 1.75rem;
+  font-size: 0.8rem;
+}
+.kids .fold .sw {
+  opacity: 0.5;
+}
+
+/* ---------- allocation gauge ---------- */
+.gauge {
+  margin-top: 1.2rem;
+  padding: 0.8rem 0.7rem 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+}
+.gauge .fig {
+  font-family: var(--mono);
+  font-weight: 300;
+  font-size: 2.15rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0.45rem 0 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.gauge .fig b {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  margin-left: 0.35rem;
+  vertical-align: 0.5em;
+}
+.gauge .of {
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.13em;
+  color: var(--dim-2);
+}
+/* the bar carries a real tick scale, so magnitude reads without text */
+.track {
+  position: relative;
+  height: 12px;
+  border: 1px solid var(--stroke-hi);
+  margin: 0.65rem 0 0.2rem;
+  display: flex;
+}
+.track i {
+  display: block;
+  height: 100%;
+  border-right: 1px solid var(--void);
+}
+.ticks {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  color: var(--dim-2);
+  letter-spacing: 0.06em;
+}
+.keys {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--stroke);
+  padding-top: 0.55rem;
+}
+.key {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+  font-size: 0.76rem;
+  color: var(--dim);
+}
+.key s {
+  text-decoration: none;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.key span {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  color: var(--dim-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- main ---------- */
+.main {
+  min-width: 0;
+  padding: 0.95rem 1.15rem 3rem;
+}
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.16em;
+  color: var(--dim-2);
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+.crumbs .now {
+  color: var(--txt);
+}
+
+.search {
+  position: relative;
+  margin-bottom: 1rem;
+}
+.search input {
+  width: 100%;
+  font-family: var(--ui);
+  font-size: 0.92rem;
+  color: var(--txt);
+  padding: 0.6rem 4.2rem 0.6rem 0.85rem;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
+  transition:
+    border-color 0.14s,
+    box-shadow 0.14s;
+}
+.search input::placeholder {
+  color: var(--dim-2);
+}
+.search input:focus {
+  outline: 0;
+  border-color: var(--stroke-hi);
+  box-shadow: 0 0 0 1px var(--stroke-hi);
+}
+.kbd {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.22rem;
+  pointer-events: none;
+}
+.kbd b {
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  font-weight: 400;
+  color: var(--dim-2);
+  border: 1px solid var(--stroke);
+  padding: 0.12rem 0.3rem;
+}
+
+/* ---------- inbox: the only amber on the panel ---------- */
+.inbox {
+  border: 1px solid rgba(255, 169, 46, 0.4);
+  background: var(--panel);
+  margin-bottom: 1.2rem;
+}
+.inbox.clear {
+  border-color: var(--stroke);
+}
+.in-h {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid rgba(255, 169, 46, 0.24);
+  background: rgba(255, 169, 46, 0.045);
+}
+.inbox.clear .in-h {
+  border-bottom: 0;
+  background: none;
+}
+.in-h .ttl {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.inbox.clear .in-h .ttl {
+  color: var(--dim);
+}
+.in-h .badge {
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  color: #1a1104;
+  background: var(--amber);
+  padding: 0.12rem 0.42rem;
+  letter-spacing: 0.1em;
+}
+.in-h .note {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+.un {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 0.8rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--stroke);
+}
+.un:last-child {
+  border-bottom: 0;
+}
+.un:hover {
+  background: var(--panel-2);
+}
+.un .body {
+  flex: 1 1 13rem;
+  min-width: 0;
+}
+.un .nm {
+  font-size: 0.86rem;
+  font-weight: 500;
+  word-break: break-word;
+}
+.un .meta {
+  font-family: var(--mono);
+  font-size: 0.53rem;
+  color: var(--dim-2);
+  margin-top: 0.2rem;
+  letter-spacing: 0.11em;
+}
+.route {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.1em;
+}
+.route .to {
+  color: var(--amber);
+  border: 1px solid rgba(255, 169, 46, 0.32);
+  padding: 0.14rem 0.42rem;
+}
+.route .as {
+  color: var(--dim);
+}
+.route .arrow {
+  color: var(--dim-2);
+}
+/* A duplicate is worth saying before the file is put away, not after. */
+.dupe {
+  font-family: var(--mono);
+  font-size: 0.53rem;
+  letter-spacing: 0.11em;
+  color: var(--ice);
+  margin-top: 0.3rem;
+}
+
+/* ---------- buttons ---------- */
+.btn {
+  cursor: pointer;
+  font-family: var(--cond);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.36rem 0.8rem;
+  background: var(--amber);
+  color: #1a1104;
+  border: 1px solid var(--amber);
+  transition: filter 0.12s;
+}
+.btn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn.g {
+  background: none;
+  color: var(--txt);
+  border-color: var(--stroke-hi);
+}
+.btn.g:hover:not(:disabled) {
+  background: var(--raise);
+  filter: none;
+}
+.btn:focus-visible {
+  outline: 1px solid var(--txt);
+  outline-offset: 2px;
+}
+
+/* ---------- head + controls ---------- */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 0.7rem;
+  flex-wrap: wrap;
+}
+.head h2 {
+  margin: 0;
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 1.5rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.head .sub {
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  color: var(--dim-2);
+}
+.head .sp {
+  flex: 1;
+}
+.seg2 {
+  display: flex;
+  border: 1px solid var(--stroke-hi);
+}
+.seg2 button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0.3rem 0.75rem;
+  color: var(--dim);
+  font-family: var(--cond);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.seg2 button + button {
+  border-left: 1px solid var(--stroke-hi);
+}
+.seg2 button:hover {
+  color: var(--txt);
+}
+.seg2 button[aria-pressed="true"] {
+  background: var(--txt);
+  color: var(--void);
+}
+.tog {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  cursor: pointer;
+  border: 1px solid var(--stroke-hi);
+  background: none;
+  padding: 0.3rem 0.7rem;
+  font-family: var(--cond);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.tog:hover {
+  color: var(--txt);
+}
+.tog[aria-pressed="true"] {
+  border-color: var(--ice);
+  color: var(--ice);
+}
+.tog i {
+  width: 6px;
+  height: 6px;
+  background: var(--dim-2);
+}
+.tog[aria-pressed="true"] i {
+  background: var(--ice);
+  box-shadow: 0 0 8px var(--ice);
+}
+
+/* ============================================================
+   THE MAP — sensor plot. Area is bytes, tone and pattern are the
+   folder, and the tick rule down the side is a real scale.
+   ============================================================ */
+.plot {
+  position: relative;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
+  margin-bottom: 0.5rem;
+}
+.plot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.mapwrap {
+  position: relative;
+  overflow: hidden;
+}
+.mini {
+  height: 64px;
+}
+.full {
+  height: 452px;
+}
+@media (max-width: 640px) {
+  .full {
+    height: 330px;
+  }
+}
+.blk {
+  position: absolute;
+  cursor: pointer;
+  overflow: hidden;
+  border: 1px solid rgba(8, 10, 12, 0.85);
+  padding: 0;
+  transition:
+    filter 0.12s,
+    opacity 0.16s,
+    box-shadow 0.12s;
+}
+.blk:hover {
+  filter: brightness(1.6);
+  z-index: 5;
+}
+.blk[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--txt);
+  z-index: 6;
+}
+.blk .t {
+  position: absolute;
+  inset: 0;
+  padding: 0.3rem 0.4rem;
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  pointer-events: none;
+  color: #0a0d10;
+  text-align: left;
+}
+.blk .t s {
+  display: block;
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  font-weight: 400;
+  opacity: 0.72;
+  margin-top: 0.16rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+/* On the darker patterns the label needs to be light, not dark. */
+.blk.f2 .t,
+.blk.f3 .t,
+.blk.f4 .t,
+.blk.f5 .t {
+  color: var(--txt);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.blk.free {
+  background: none;
+  border: 1px dashed var(--stroke-hi);
+  cursor: default;
+}
+.blk.free .t {
+  color: var(--dim-2);
+  text-shadow: none;
+}
+.blk.free:hover {
+  filter: none;
+}
+.blk .pin {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 4px;
+  height: 4px;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+}
+.mapwrap[data-cold="true"] .blk {
+  opacity: 0.1;
+}
+.mapwrap[data-cold="true"] .blk.icy {
+  opacity: 1;
+  background-color: rgba(127, 212, 255, 0.24);
+  box-shadow:
+    inset 0 0 0 1px var(--ice),
+    0 0 24px -6px var(--ice);
+}
+.mapwrap[data-cold="true"] .blk.icy .t {
+  color: var(--ice);
+  text-shadow: none;
+}
+.mapwrap[data-cold="true"] .blk.free {
+  opacity: 0.3;
+}
+
+/* reticle */
+.ret {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.plot:hover .ret {
+  opacity: 1;
+}
+.ret i {
+  position: absolute;
+  background: rgba(220, 228, 233, 0.22);
+}
+.ret .h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.ret .v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+/* tick scale down the right edge of the plot */
+.scale {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  z-index: 4;
+  pointer-events: none;
+  border-left: 1px solid var(--stroke);
+  background: linear-gradient(90deg, transparent, rgba(8, 10, 12, 0.7));
+}
+.scale i {
+  position: absolute;
+  right: 0;
+  height: 1px;
+  background: var(--stroke-hi);
+}
+.scale b {
+  position: absolute;
+  right: 3px;
+  font-family: var(--mono);
+  font-size: 0.45rem;
+  font-weight: 400;
+  color: var(--dim-2);
+  letter-spacing: 0.04em;
+  transform: translateY(-50%);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.2rem;
+  font-family: var(--cond);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim-2);
+}
+.legend .lg {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.coldline {
+  margin-left: auto;
+  color: var(--ice);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  text-transform: none;
+}
+
+.hint {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+  background: var(--raise);
+  border: 1px solid var(--stroke-hi);
+  padding: 0.45rem 0.6rem;
+  max-width: 250px;
+}
+.hint[data-on="true"] {
+  opacity: 1;
+}
+.hint .h1 {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.hint .h2 {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  color: var(--dim);
+  margin-top: 0.28rem;
+  letter-spacing: 0.13em;
+}
+.hint .h3 {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  color: var(--ice);
+  margin-top: 0.28rem;
+  letter-spacing: 0.13em;
+}
+
+/* ---------- index ---------- */
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--stroke);
+  padding: 0.5rem 0.65rem;
+  transition: background 0.12s;
+}
+.row:hover {
+  background: var(--panel-2);
+}
+.row[aria-pressed="true"] {
+  background: var(--raise);
+  box-shadow: inset 2px 0 0 var(--txt);
+}
+.row .nm {
+  flex: 1 1 11rem;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .nm i {
+  display: block;
+  font-family: var(--mono);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.52rem;
+  color: var(--dim-2);
+  margin-top: 0.22rem;
+  letter-spacing: 0.14em;
+}
+.row .k {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  border: 1px solid var(--stroke);
+  padding: 0.12rem 0.34rem;
+}
+.row .m {
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  color: var(--dim-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.row .link {
+  width: 5px;
+  height: 5px;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+  flex: none;
+}
+.row .icy {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+  color: var(--ice);
+  border: 1px solid rgba(127, 212, 255, 0.34);
+  padding: 0.1rem 0.34rem;
+}
+
+/* ---------- detail ---------- */
+.detail {
+  border-left: 1px solid var(--stroke);
+  padding: 0.95rem 1rem 3rem;
+  min-height: calc(100vh - var(--bar-h));
+}
+.detail h3 {
+  margin: 0 0 0.3rem;
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  word-break: break-word;
+}
+.detail .path {
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  color: var(--dim-2);
+  letter-spacing: 0.16em;
+}
+.prev {
+  position: relative;
+  height: 118px;
+  margin: 0.8rem 0 0.9rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.2em;
+  color: var(--dim-2);
+  overflow: hidden;
+}
+.prev img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid var(--stroke);
+}
+.kv span:first-child {
+  font-family: var(--cond);
+  font-size: 0.74rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.kv span:last-child {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.block {
+  margin-top: 0.95rem;
+}
+.block .cap {
+  display: block;
+  padding-bottom: 0.4rem;
+}
+.refline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0.22rem 0;
+}
+.refline i {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+}
+.none {
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  color: var(--dim-2);
+}
+.chips {
+  display: flex;
+  gap: 0.28rem;
+  flex-wrap: wrap;
+}
+.chip {
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--stroke);
+  padding: 0.14rem 0.38rem;
+  background: none;
+  cursor: default;
+}
+.acts {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.95rem;
+  flex-wrap: wrap;
+}
+.coldflag {
+  border: 1px solid rgba(127, 212, 255, 0.34);
+  background: rgba(127, 212, 255, 0.05);
+  padding: 0.5rem 0.6rem;
+  margin-top: 0.8rem;
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--ice);
+  line-height: 1.7;
+}
+
+/* ---------- command palette ---------- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(4, 6, 8, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 9vh 1rem;
+}
+.pal {
+  width: min(540px, 100%);
+  border: 1px solid var(--stroke-hi);
+  background: var(--panel);
+  height: fit-content;
+}
+.pal input {
+  width: 100%;
+  font-family: var(--ui);
+  font-size: 1rem;
+  color: var(--txt);
+  background: none;
+  border: 0;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--stroke);
+}
+.pal input:focus {
+  outline: 0;
+}
+.pal input::placeholder {
+  color: var(--dim-2);
+}
+.pal .list {
+  max-height: 47vh;
+  overflow-y: auto;
+  padding: 0.3rem;
+}
+.pal .grp {
+  padding: 0.55rem 0.7rem 0.25rem;
+}
+.pal .it {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.86rem;
+}
+.pal .it:hover,
+.pal .it[data-on="true"] {
+  background: var(--raise);
+}
+.pal .it .sub {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  color: var(--dim-2);
+}
+.pal .foot {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0.85rem;
+  border-top: 1px solid var(--stroke);
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.16em;
+  color: var(--dim-2);
+}
+
+/* ---------- readout ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.3rem;
+  transform: translateX(-50%) translateY(5px);
+  z-index: 80;
+  background: var(--txt);
+  color: var(--void);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.95rem;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+.toast[data-on="true"] {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.toast[data-bad="true"] {
+  background: var(--amber);
+}
+
+/* Drop target — the whole panel accepts a file. */
+.drop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  border: 2px dashed var(--amber);
+  background: rgba(255, 169, 46, 0.06);
+  display: grid;
+  place-items: center;
+  font-family: var(--cond);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--amber);
+  pointer-events: none;
+}
