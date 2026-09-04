@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { AppStatus, StatusAlert, StatusLevel } from "@/lib/status-contract";
 import { bytes as fmtBytes, held } from "@/lib/format";
-import { getMap, getSettings, listUnfiled } from "@/lib/vault";
+import { getMap, listUnfiled } from "@/lib/vault";
 import { storage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +47,7 @@ export async function GET() {
       });
     }
 
-    const [map, unfiled, settings] = await Promise.all([getMap(), listUnfiled(), getSettings()]);
+    const [map, unfiled] = await Promise.all([getMap(), listUnfiled()]);
 
     const usedFraction = map.allocationBytes ? map.usedBytes / map.allocationBytes : 0;
     const alerts: StatusAlert[] = [];
@@ -57,11 +57,15 @@ export async function GET() {
       level = "attention";
       const oldest = unfiled[0];
       const days = Math.floor((Date.now() - oldest.addedAt.getTime()) / 86_400_000);
+      /* held() answers in telemetry ("6D", "TODAY"), which reads fine on
+       * Vault's own panel but lands in the middle of a sentence on the
+       * hub's readout. "oldest waiting TODAY" is not English. */
+      const waited = days === 0 ? "arrived today" : `waiting ${held(oldest.addedAt)}`;
       alerts.push({
         text:
           unfiled.length === 1
-            ? `1 file unfiled, waiting ${held(oldest.addedAt)}`
-            : `${unfiled.length} files unfiled, oldest waiting ${held(oldest.addedAt)}`,
+            ? `1 file unfiled, ${waited}`
+            : `${unfiled.length} files unfiled, oldest ${waited}`,
         severity: days >= STALE_INBOX_DAYS ? "soon" : "info",
         href: "/",
       });
@@ -102,7 +106,7 @@ export async function GET() {
         },
       ],
       alerts,
-      at: settings.lastScanAt ? at : at,
+      at,
     });
   } catch (e) {
     /* Almost always Postgres being restarted. Report it plainly rather
