@@ -56,6 +56,15 @@ const PATTERNS = ["f1", "f2", "f3", "f4", "f5", "f6"] as const;
 
 /** One queued upload. `folder` is set only for files that came out of a
  *  dropped directory; loose files carry null and land in the Inbox. */
+/** Percentages that never round a real file down to nothing. */
+function share(part: number, whole: number): string {
+  if (!whole || !part) return "0%";
+  const pct = (part / whole) * 100;
+  if (pct >= 1) return `${pct.toFixed(1)}%`;
+  if (pct >= 0.1) return `${pct.toFixed(2)}%`;
+  return "<0.1%";
+}
+
 type Upload = { file: File; folder: string | null };
 type Progress = { done: number; total: number; name: string; pct: number; bytes: number };
 
@@ -423,7 +432,36 @@ export default function Panel(props: PanelData) {
               onGroup={(top) => setScope({ top, sub: null })}
             />
           ) : (
-            <Index rows={rows} patternOf={patternOf} selId={selected?.id ?? null} onPick={select} />
+            <>
+              {/* Same correction as the plot: the strip carries "how
+                  full", so the index does not need a minimap that would
+                  be one grey rectangle at low utilisation. */}
+              <div className="alloc" style={{ marginBottom: "0.9rem" }}>
+                <div className="alloc-track">
+                  {props.map.groups.map((g) => (
+                    <i
+                      key={g.top}
+                      className={patternOf.get(g.top) ?? "f6"}
+                      style={{ width: `${(g.bytes / props.map.allocationBytes) * 100}%` }}
+                      title={`${g.top} ${fmtBytes(g.bytes)}`}
+                    />
+                  ))}
+                </div>
+                <div className="alloc-read">
+                  <span>
+                    {fmtBytes(props.map.usedBytes)} OF {fmtBytes(props.map.allocationBytes)}
+                  </span>
+                  <span className="cold-read">
+                    COLD {fmtBytes(props.map.coldBytes)} ·{" "}
+                    {props.map.usedBytes
+                      ? Math.round((props.map.coldBytes / props.map.usedBytes) * 100)
+                      : 0}
+                    % OF STORED
+                  </span>
+                </div>
+              </div>
+              <Index rows={rows} patternOf={patternOf} selId={selected?.id ?? null} onPick={select} />
+            </>
           )}
         </main>
 
@@ -586,7 +624,11 @@ function Nav({
     setEntry(null);
   };
 
-  const usedGb = map.usedBytes / 1024 ** 3;
+  /* Forcing GB here printed "0.0 GB" for a vault holding 2 MB, which
+     reads as broken rather than as empty. fmtBytes picks the unit that
+     makes the number meaningful and the display splits it, so the
+     numeral stays the big thing on the panel. */
+  const [usedValue, usedUnit] = fmtBytes(map.usedBytes).split(" ");
   const allocGb = map.allocationBytes / 1024 ** 3;
   /* Ticks at 0 / third / two thirds / full, whatever the allocation is —
    * hardcoding 0-10-20-30 would lie the moment the ceiling changes. */
@@ -688,11 +730,11 @@ function Nav({
       <div className="gauge brk">
         <span className="cap">Allocation</span>
         <div className="fig">
-          {usedGb.toFixed(1)}
-          <b>GB</b>
+          {usedValue}
+          <b>{usedUnit}</b>
         </div>
         <div className="of">
-          OF {allocGb.toFixed(0)} · {fmtBytes(map.freeBytes)} FREE
+          OF {allocGb.toFixed(0)} GB · {fmtBytes(map.freeBytes)} FREE
         </div>
 
         <div className="track">
@@ -871,20 +913,30 @@ function Plot({
   const [hint, setHint] = useState<{ x: number; y: number; block: (typeof blocks)[number] } | null>(null);
 
   /* Two passes: volumes first, then the files inside each volume's
-     rectangle — so the plot IS the folder tree, drawn to scale. */
+     rectangle — so the plot IS the folder tree, drawn to scale.
+
+     FREE SPACE IS NOT IN HERE, and that is a correction. It used to be
+     a block like any other, which is honest arithmetic and a useless
+     picture: at 2 MB stored against a 30 GB allocation the real files
+     get 0.004% of the area each and the plot renders as one grey
+     rectangle. Free space beat everything you own by four orders of
+     magnitude.
+
+     So the two questions are drawn separately now. The plot answers
+     "what am I storing, and what is big" — area is bytes among the
+     things that exist. The strip underneath answers "how full am I",
+     which is one number and only ever needed one dimension. Both stay
+     exactly proportional; neither has to lose to the other. */
   const blocks = useMemo(() => {
     const groups = layout(
-      [
-        ...map.groups.map((g) => ({ v: g.bytes, d: g })),
-        { v: map.freeBytes, d: null },
-      ],
+      map.groups.map((g) => ({ v: g.bytes, d: g })),
       { x: 0, y: 0, w: 100, h: 100 },
     );
 
     const out: {
       id: number | null;
       name: string;
-      top: string | null;
+      top: string;
       bytes: number;
       cold: boolean;
       linked: boolean;
@@ -893,19 +945,6 @@ function Plot({
     }[] = [];
 
     for (const g of groups) {
-      if (!g.d) {
-        out.push({
-          id: null,
-          name: "Free",
-          top: null,
-          bytes: map.freeBytes,
-          cold: false,
-          linked: false,
-          count: 0,
-          rect: { x: g.x, y: g.y, w: g.w, h: g.h },
-        });
-        continue;
-      }
       const inner = layout(
         g.d.blocks.map((b) => ({ v: b.bytes, d: b })),
         { x: g.x, y: g.y, w: g.w, h: g.h },
@@ -926,10 +965,18 @@ function Plot({
     return out;
   }, [map]);
 
-  const allocGb = map.allocationBytes / 1024 ** 3;
-  const step = allocGb <= 12 ? 2 : allocGb <= 40 ? 5 : 10;
+  /* The scale measures what the plot actually draws — stored bytes.
+     Ticking it against the allocation while the plot no longer contains
+     free space would put every block in the bottom 0.01% of a ruler. */
+  const storedMb = map.usedBytes / 1024 ** 2;
+  const niceStep = (mb: number) => {
+    const target = mb / 4;
+    const steps = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1024, 2048, 5120, 10240, 25600, 51200];
+    return steps.find((x) => x >= target) ?? 51200;
+  };
+  const stepMb = niceStep(storedMb || 1);
   const scaleTicks: number[] = [];
-  for (let g = 0; g <= allocGb; g += step) scaleTicks.push(g);
+  for (let v = 0; v <= storedMb; v += stepMb) scaleTicks.push(v);
 
   return (
     <>
@@ -944,6 +991,12 @@ function Plot({
         }}
       >
         <div className="mapwrap full" data-cold={cold}>
+          {blocks.length === 0 && (
+            <div className="plot-empty">
+              <span className="cap">Nothing stored</span>
+              <span>Drop files anywhere, or use ADD FILES.</span>
+            </div>
+          )}
           {blocks.map((b, i) => {
             const style = {
               left: `${b.rect.x}%`,
@@ -953,18 +1006,6 @@ function Plot({
             };
             const big = b.rect.w > 7 && b.rect.h > 11;
 
-            if (b.top === null) {
-              return (
-                <div className="blk free" style={style} key="free">
-                  {b.rect.w > 12 && b.rect.h > 16 && (
-                    <span className="t">
-                      Free<s>{fmtBytes(b.bytes)}</s>
-                    </span>
-                  )}
-                </div>
-              );
-            }
-
             return (
               <button
                 key={`${b.top}-${b.id ?? "tail"}-${i}`}
@@ -972,7 +1013,7 @@ function Plot({
                 style={style}
                 aria-pressed={b.id !== null && b.id === selId}
                 aria-label={`${b.name}, ${fmtBytes(b.bytes)}`}
-                onClick={() => (b.id === null ? onGroup(b.top!) : onPick(b.id))}
+                onClick={() => (b.id === null ? onGroup(b.top) : onPick(b.id))}
                 onMouseMove={(e) => setHint({ x: e.clientX, y: e.clientY, block: b })}
                 onMouseLeave={() => setHint(null)}
               >
@@ -995,16 +1036,42 @@ function Plot({
 
         {/* A real scale, in GB, against the allocation. */}
         <div className="scale">
-          {scaleTicks.map((g) => {
-            const pct = 100 - (g / allocGb) * 100;
-            const major = g % (step * 2) === 0;
+          {scaleTicks.map((v, i) => {
+            const pct = storedMb ? 100 - (v / storedMb) * 100 : 100;
+            const major = i % 2 === 0;
             return (
-              <span key={g}>
+              <span key={v}>
                 <i style={{ top: `${pct}%`, width: major ? 12 : 6 }} />
-                {major && <b style={{ top: `${Math.min(97, Math.max(3, pct))}%` }}>{g}</b>}
+                {major && (
+                  <b style={{ top: `${Math.min(97, Math.max(3, pct))}%` }}>
+                    {v >= 1024 ? `${Math.round(v / 1024)}G` : `${Math.round(v)}M`}
+                  </b>
+                )}
               </span>
             );
           })}
+        </div>
+      </div>
+
+      {/* How full the vault is — the job free space used to do badly
+          inside the plot. One dimension is all that question ever
+          needed, and here it stays legible at any utilisation. */}
+      <div className="alloc">
+        <div className="alloc-track">
+          {map.groups.map((g) => (
+            <i
+              key={g.top}
+              className={patternOf.get(g.top) ?? "f6"}
+              style={{ width: `${(g.bytes / map.allocationBytes) * 100}%` }}
+              title={`${g.top} ${fmtBytes(g.bytes)}`}
+            />
+          ))}
+        </div>
+        <div className="alloc-read">
+          <span>
+            {fmtBytes(map.usedBytes)} OF {fmtBytes(map.allocationBytes)}
+          </span>
+          <span>{fmtBytes(map.freeBytes)} FREE</span>
         </div>
       </div>
 
@@ -1190,7 +1257,8 @@ function Detail({
       </div>
       <div className="kv">
         <span>Alloc</span>
-        <span>{((row.bytes / allocation) * 100).toFixed(1)}%</span>
+        {/* A file that exists is never 0.0% of anything. */}
+        <span>{share(row.bytes, allocation)}</span>
       </div>
       <div className="kv">
         <span>Added</span>
@@ -1205,7 +1273,7 @@ function Detail({
         <div className="coldflag">
           COLD · NEVER OPENED
           <br />
-          {fmtBytes(row.bytes)} · {((row.bytes / allocation) * 100).toFixed(1)}% OF ALLOC
+          {fmtBytes(row.bytes)} · {share(row.bytes, allocation)} OF ALLOC
         </div>
       )}
 

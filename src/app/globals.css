@@ -854,9 +854,6 @@ button {
   position: relative;
   overflow: hidden;
 }
-.mini {
-  height: 64px;
-}
 .full {
   height: 452px;
 }
@@ -1720,4 +1717,62 @@ button {
   .hint {
     display: none;
   }
+}
+
+/* ---------- allocation strip ----------
+   Free space used to be a block inside the plot, which is honest
+   arithmetic and a useless picture: 2 MB stored against a 30 GB
+   allocation gives every real file 0.004% of the area and renders as
+   one grey rectangle.
+
+   Two questions, drawn separately. The plot answers "what am I storing
+   and what is big"; this answers "how full am I", which only ever
+   needed one dimension. Both stay exactly proportional. */
+.alloc {
+  margin-bottom: 1rem;
+}
+.alloc-track {
+  display: flex;
+  height: 10px;
+  border: 1px solid var(--stroke-hi);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.022) 0 4px,
+    transparent 4px 8px
+  );
+}
+.alloc-track i {
+  display: block;
+  height: 100%;
+  min-width: 1px; /* a folder you own should never be zero pixels wide */
+  border-right: 1px solid var(--void);
+}
+.alloc-read {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.14em;
+  color: var(--dim-2);
+}
+.alloc-read .cold-read {
+  color: var(--ice);
+}
+
+/* An empty vault should say so, not render an empty box. */
+.plot-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: var(--dim-2);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 1rem;
 }
