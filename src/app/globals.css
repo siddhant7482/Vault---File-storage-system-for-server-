@@ -1270,3 +1270,73 @@ button {
   color: var(--amber);
   pointer-events: none;
 }
+
+/* ---------- folder maintenance ----------
+   A folder is a key prefix, so creating one is cheap and renaming one
+   moves every object underneath it. The controls sit under the tree
+   rather than on each row: three small buttons that are always in the
+   same place beat a hover affordance you have to go hunting for. */
+.foldbar {
+  display: flex;
+  gap: 1px;
+  margin: 0.55rem 0.45rem 0;
+  border: 1px solid var(--stroke);
+}
+.foldbar .mini {
+  flex: 1;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0.3rem 0.2rem;
+  color: var(--dim);
+  font-family: var(--cond);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.foldbar .mini + .mini {
+  border-left: 1px solid var(--stroke);
+}
+.foldbar .mini:hover:not(:disabled) {
+  background: var(--raise);
+  color: var(--txt);
+}
+.foldbar .mini:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.foldentry {
+  width: calc(100% - 0.9rem);
+  margin: 0.35rem 0.45rem 0;
+  font-family: var(--ui);
+  font-size: 0.82rem;
+  color: var(--txt);
+  background: var(--panel);
+  border: 1px solid var(--stroke-hi);
+  padding: 0.35rem 0.45rem;
+}
+.foldentry:focus {
+  outline: 0;
+  border-color: var(--amber);
+}
+.foldentry::placeholder {
+  color: var(--dim-2);
+}
+
+/* The PDF preview is the browser's own renderer. */
+.prev object,
+.prev iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--void);
+}
+/* Worth more than a thumbnail-sized strip — a first page you cannot
+   read is not a preview. */
+.prev {
+  height: 190px;
+}

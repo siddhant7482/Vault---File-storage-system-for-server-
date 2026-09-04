@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { folders, objects } from "@/db/schema";
 import { classify } from "@/lib/kind";
@@ -67,6 +67,103 @@ export async function ensureFolder(path: string): Promise<number> {
   }
 
   return parentId!;
+}
+
+/* ------------------------------------------------------------
+   Folder maintenance.
+
+   A folder IS a key prefix. So renaming one is not a metadata edit —
+   it is a move of every object underneath it, and the same discipline
+   applies: bytes first, index second. Do it the other way round and
+   the index points at keys that do not exist, which looks exactly
+   like data loss to whoever is holding the laptop.
+   ------------------------------------------------------------ */
+
+export async function createFolder(path: string): Promise<{ id: number; path: string }> {
+  const clean = path.split("/").map(safeSegment).filter(Boolean).join("/");
+  if (!clean) throw new Error("Empty folder name");
+  /* Two levels is the whole design. Deeper nesting is how a file store
+   * turns into somewhere things go missing. */
+  if (clean.split("/").length > 2) throw new Error("Two levels only — Documents/Housing, not deeper");
+  const id = await ensureFolder(clean);
+  return { id, path: clean };
+}
+
+export async function renameFolder(id: number, rawName: string): Promise<{ path: string }> {
+  const [folder] = await db.select().from(folders).where(eq(folders.id, id)).limit(1);
+  if (!folder) throw new Error("No such folder");
+
+  const name = safeSegment(rawName.trim());
+  if (!name) throw new Error("Empty name");
+  if (name === folder.name) return { path: folder.path };
+
+  const parentPath = folder.path.includes("/") ? folder.path.slice(0, folder.path.lastIndexOf("/")) : "";
+  const newPath = parentPath ? `${parentPath}/${name}` : name;
+
+  const [clash] = await db.select({ id: folders.id }).from(folders).where(eq(folders.path, newPath)).limit(1);
+  if (clash) throw new Error(`${newPath} already exists`);
+
+  /* Every object at or below the old prefix, including grandchildren. */
+  const affected = await db
+    .select({ id: objects.id, key: objects.key })
+    .from(objects)
+    .where(and(isNull(objects.deletedAt), like(objects.key, `${folder.path}/%`)));
+
+  const store = storage();
+  const moved: { id: number; key: string }[] = [];
+  for (const o of affected) {
+    const destKey = newPath + o.key.slice(folder.path.length);
+    await store.move(o.key, destKey);
+    moved.push({ id: o.id, key: destKey });
+  }
+  for (const m of moved) {
+    await db.update(objects).set({ key: m.key, updatedAt: new Date() }).where(eq(objects.id, m.id));
+  }
+
+  /* The folder itself, then every descendant's path prefix. */
+  await db.update(folders).set({ path: newPath, name }).where(eq(folders.id, id));
+  const descendants = await db
+    .select({ id: folders.id, path: folders.path })
+    .from(folders)
+    .where(like(folders.path, `${folder.path}/%`));
+  for (const d of descendants) {
+    await db
+      .update(folders)
+      .set({ path: newPath + d.path.slice(folder.path.length) })
+      .where(eq(folders.id, d.id));
+  }
+
+  return { path: newPath };
+}
+
+/**
+ * Only ever removes an EMPTY folder, and never touches a byte.
+ *
+ * Deleting a folder full of files is not a thing this app will do in
+ * one click. If the files should go, trash them and watch the number
+ * go down; if they should move, move them. A recursive folder delete
+ * is the single easiest way to lose something irreplaceable, and it
+ * saves about four seconds.
+ */
+export async function deleteFolder(id: number): Promise<void> {
+  const [folder] = await db.select().from(folders).where(eq(folders.id, id)).limit(1);
+  if (!folder) throw new Error("No such folder");
+
+  const [{ n: fileCount }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(objects)
+    .where(and(isNull(objects.deletedAt), like(objects.key, `${folder.path}/%`)));
+  if (fileCount > 0) {
+    throw new Error(`${folder.path} holds ${fileCount} file${fileCount === 1 ? "" : "s"} — move or trash them first`);
+  }
+
+  const [{ n: childCount }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(folders)
+    .where(like(folders.path, `${folder.path}/%`));
+  if (childCount > 0) throw new Error(`${folder.path} has subfolders — remove them first`);
+
+  await db.delete(folders).where(eq(folders.id, id));
 }
 
 /** Every name already used in a folder, so a move never overwrites. */

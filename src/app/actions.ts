@@ -4,7 +4,16 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { objectTags, objects, tags } from "@/db/schema";
-import { fileObject, renameObject, restoreObject, trashObject, unfileObject } from "@/lib/filing";
+import {
+  createFolder,
+  deleteFolder,
+  fileObject,
+  renameFolder,
+  renameObject,
+  restoreObject,
+  trashObject,
+  unfileObject,
+} from "@/lib/filing";
 import { createShare, revokeShare } from "@/lib/share";
 import { suggestFiling } from "@/lib/suggest";
 
@@ -71,6 +80,43 @@ export async function suggestAction(id: number): Promise<ActionResult> {
       .where(eq(objects.id, id));
     revalidatePath("/");
     return { ok: true, message: `SUGGESTED · ${s.folder}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/* ---------------- folders ----------------
+   A folder is a key prefix, so these are not metadata edits. Creating
+   one is cheap; renaming one moves every object underneath it. */
+
+export async function createFolderAction(path: string): Promise<ActionResult> {
+  try {
+    const r = await createFolder(path);
+    revalidatePath("/");
+    return { ok: true, message: `CREATED · ${r.path.toUpperCase()}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function renameFolderAction(id: number, name: string): Promise<ActionResult> {
+  try {
+    const r = await renameFolder(id, name);
+    revalidatePath("/");
+    return { ok: true, message: `RENAMED · ${r.path.toUpperCase()}` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Refuses unless the folder is empty. The error says why, because
+ *  "could not delete" with no reason is how people start distrusting
+ *  a file manager. */
+export async function deleteFolderAction(id: number): Promise<ActionResult> {
+  try {
+    await deleteFolder(id);
+    revalidatePath("/");
+    return { ok: true, message: "FOLDER REMOVED" };
   } catch (e) {
     return fail(e);
   }

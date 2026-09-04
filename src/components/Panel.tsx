@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   acceptSuggestionAction,
+  createFolderAction,
+  deleteFolderAction,
   fileAction,
   pinAction,
+  renameFolderAction,
   revokeShareAction,
   shareAction,
   trashAction,
@@ -193,6 +196,10 @@ export default function Panel(props: PanelData) {
           map={props.map}
           patternOf={patternOf}
           scope={scope}
+          pending={pending}
+          onCreate={(path) => run(() => createFolderAction(path))}
+          onRenameFolder={(id, name) => run(() => renameFolderAction(id, name))}
+          onDeleteFolder={(id) => run(() => deleteFolderAction(id))}
           openSet={open}
           onToggle={(path) =>
             setOpen((prev) => {
@@ -296,7 +303,27 @@ export default function Panel(props: PanelData) {
             const res = await fetch(`/api/objects/${id}/url?intent=open${download ? "&download=1" : ""}`);
             if (!res.ok) return say("COULD NOT OPEN", true);
             const { url } = await res.json();
-            window.open(url, "_blank", "noopener");
+
+            /* NOT window.open(). Fetching the signed URL is async, which
+             * breaks the user-gesture chain, and every popup blocker
+             * then kills the window silently — the button appears to do
+             * nothing at all.
+             *
+             * A download carries content-disposition: attachment, so
+             * navigating to it downloads without leaving the page. An
+             * inline open needs a real anchor click, which browsers
+             * still honour after an await. */
+            if (download) {
+              window.location.href = url;
+              return;
+            }
+            const a = document.createElement("a");
+            a.href = url;
+            a.target = "_blank";
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
           }}
         />
       </div>
@@ -335,19 +362,50 @@ function Nav({
   map,
   patternOf,
   scope,
+  pending,
   openSet,
   onToggle,
   onScope,
+  onCreate,
+  onRenameFolder,
+  onDeleteFolder,
 }: {
   tree: TreeNode[];
   inbox: number;
   map: MapData;
   patternOf: Map<string, string>;
   scope: Scope;
+  pending: boolean;
   openSet: Set<string>;
   onToggle: (path: string) => void;
   onScope: (s: Scope) => void;
+  onCreate: (path: string) => void;
+  onRenameFolder: (id: number, name: string) => void;
+  onDeleteFolder: (id: number) => void;
 }) {
+  /* One inline field rather than a modal or a prompt(). A modal is a
+     lot of chrome for one string, and prompt() looks like 1998 sitting
+     on top of an instrument panel. */
+  const [entry, setEntry] = useState<{ mode: "new" | "rename"; id?: number; value: string } | null>(null);
+  const entryRef = useRef<HTMLInputElement>(null);
+  useEffect(() => entryRef.current?.focus(), [entry?.mode, entry?.id]);
+
+  const selectedFolder = useMemo(() => {
+    if (!scope) return null;
+    for (const t of tree) {
+      if (t.name === scope.top && !scope.sub) return t;
+      if (t.name === scope.top && scope.sub) return t.children.find((k) => k.name === scope.sub) ?? null;
+    }
+    return null;
+  }, [tree, scope]);
+
+  const submit = () => {
+    if (!entry || !entry.value.trim()) return setEntry(null);
+    if (entry.mode === "new") onCreate(entry.value.trim());
+    else if (entry.id !== undefined) onRenameFolder(entry.id, entry.value.trim());
+    setEntry(null);
+  };
+
   const usedGb = map.usedBytes / 1024 ** 3;
   const allocGb = map.allocationBytes / 1024 ** 3;
   /* Ticks at 0 / third / two thirds / full, whatever the allocation is —
@@ -407,6 +465,45 @@ function Nav({
           </div>
         );
       })}
+
+      {/* Folder maintenance. NEW takes a path — "Documents/Legal" — so
+          making a subfolder is the same gesture as making a top-level
+          one, and the field says so. */}
+      <div className="foldbar">
+        <button className="mini" disabled={pending} onClick={() => setEntry({ mode: "new", value: selectedFolder && !scope?.sub ? `${scope!.top}/` : "" })}>
+          New
+        </button>
+        <button
+          className="mini"
+          disabled={pending || !selectedFolder}
+          onClick={() => selectedFolder && setEntry({ mode: "rename", id: selectedFolder.id, value: selectedFolder.name })}
+        >
+          Rename
+        </button>
+        <button
+          className="mini"
+          disabled={pending || !selectedFolder}
+          onClick={() => selectedFolder && onDeleteFolder(selectedFolder.id)}
+        >
+          Drop
+        </button>
+      </div>
+
+      {entry && (
+        <input
+          ref={entryRef}
+          className="foldentry"
+          value={entry.value}
+          placeholder={entry.mode === "new" ? "Documents/Legal" : "New name"}
+          onChange={(e) => setEntry({ ...entry, value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            else if (e.key === "Escape") setEntry(null);
+          }}
+          onBlur={submit}
+          aria-label={entry.mode === "new" ? "New folder path" : "Rename folder"}
+        />
+      )}
 
       <div className="gauge brk">
         <span className="cap">Allocation</span>
@@ -829,11 +926,15 @@ function Detail({
 }) {
   const [preview, setPreview] = useState<string | null>(null);
 
+  /* What can actually be shown without shipping a renderer: images, and
+     PDFs, which every current browser draws natively in an iframe. */
+  const previewable = row ? row.kind === "image" || row.ext === "pdf" : false;
+
   /* Previews use intent=preview so that glancing at a thumbnail does
      NOT clear the file's cold flag. */
   useEffect(() => {
     setPreview(null);
-    if (!row || row.kind !== "image") return;
+    if (!row || !(row.kind === "image" || row.ext === "pdf")) return;
     let alive = true;
     fetch(`/api/objects/${row.id}/url?intent=preview`)
       .then((r) => (r.ok ? r.json() : null))
@@ -858,11 +959,27 @@ function Detail({
       <div className="path">{(row.folderPath ?? "INBOX").toUpperCase()}</div>
 
       <div className="prev brk">
-        {preview ? (
+        {preview && row.kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview} alt="" />
-        ) : row.kind === "document" ? (
-          "PAGE 1"
+        ) : preview && row.ext === "pdf" ? (
+          /* The browser's own PDF viewer, which is already sandboxed by
+             the browser — the same mechanism every webmail relies on to
+             preview attachments. An iframe sandbox attribute on top of
+             it is not extra safety: with allow-same-origin it isolates
+             nothing, and without it Chrome's viewer often refuses to
+             render at all, which is a blank pane pretending to be a
+             security measure.
+             What does the work is the blob route: a fixed
+             application/pdf content-type with nosniff, so a file cannot
+             talk the browser into treating it as HTML.
+             <object> rather than <iframe> for the fallback — a browser
+             with no PDF viewer shows the child instead of nothing. */
+          <object data={`${preview}#toolbar=0&navpanes=0&view=FitH`} type="application/pdf" aria-label={row.name}>
+            <span className="none">NO INLINE VIEWER</span>
+          </object>
+        ) : previewable ? (
+          "LOADING"
         ) : (
           "NO PREVIEW"
         )}
