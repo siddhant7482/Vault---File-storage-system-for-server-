@@ -67,9 +67,18 @@ export interface StorageDriver {
   /** Where the client should send new bytes. */
   putTarget(key: string, opts: { contentType?: string; expiresIn?: number }): Promise<PutTarget>;
 
-  /** Streams the content. Only the scanner uses this, and only to hash —
-   *  nothing user-facing should ever call it. */
-  read(key: string): Promise<ReadableStream<Uint8Array>>;
+  /**
+   * Streams the content, optionally a byte range.
+   *
+   * The range is not an optimisation — it is what makes video work.
+   * A browser asks for bytes 0-1 first, then seeks to read an MP4's
+   * moov atom, and a server that answers every request with the whole
+   * file either stalls or refuses to play. Seeking needs it too.
+   *
+   * `end` is INCLUSIVE, matching both the HTTP Range header and
+   * createReadStream, so nothing has to translate between them.
+   */
+  read(key: string, range?: { start: number; end: number }): Promise<ReadableStream<Uint8Array>>;
 
   /** Accepts bytes on the proxy path. */
   write(key: string, body: ReadableStream<Uint8Array> | Uint8Array, contentType?: string): Promise<void>;

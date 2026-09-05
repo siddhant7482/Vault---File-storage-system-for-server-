@@ -1183,15 +1183,18 @@ function Detail({
 }) {
   const [preview, setPreview] = useState<string | null>(null);
 
-  /* What can actually be shown without shipping a renderer: images, and
-     PDFs, which every current browser draws natively in an iframe. */
-  const previewable = row ? row.kind === "image" || row.ext === "pdf" : false;
+  /* What the browser can render with nothing shipped to help it:
+     images, video, audio, and PDFs. Everything else gets an honest
+     "no preview" plate rather than a broken box. */
+  const previewable = row
+    ? row.kind === "image" || row.kind === "video" || row.kind === "audio" || row.ext === "pdf"
+    : false;
 
   /* Previews use intent=preview so that glancing at a thumbnail does
      NOT clear the file's cold flag. */
   useEffect(() => {
     setPreview(null);
-    if (!row || !(row.kind === "image" || row.ext === "pdf")) return;
+    if (!row || !previewable) return;
     let alive = true;
     fetch(`/api/objects/${row.id}/url?intent=preview`)
       .then((r) => (r.ok ? r.json() : null))
@@ -1200,6 +1203,14 @@ function Detail({
     return () => {
       alive = false;
     };
+  }, [row, previewable]);
+
+  /* Pressing play IS using the file, unlike letting a thumbnail load.
+     One request, result discarded — it exists for the side effect of
+     stamping lastOpenedAt, which is the only thing that clears COLD. */
+  const countAsOpened = useCallback(() => {
+    if (!row) return;
+    void fetch(`/api/objects/${row.id}/url?intent=open`).catch(() => {});
   }, [row]);
 
   if (!row) {
@@ -1240,6 +1251,13 @@ function Detail({
           <object data={`${preview}#toolbar=0&navpanes=0&view=FitH`} type="application/pdf" aria-label={row.name}>
             <span className="none">NO INLINE VIEWER</span>
           </object>
+        ) : preview && row.kind === "video" ? (
+          /* preload="metadata" fetches the header and the duration and
+             stops. Anything more would pull a gigabyte off the disk for
+             a pane you may never look at. */
+          <video src={preview} controls preload="metadata" playsInline onPlay={countAsOpened} />
+        ) : preview && row.kind === "audio" ? (
+          <audio src={preview} controls preload="metadata" onPlay={countAsOpened} />
         ) : previewable ? (
           "LOADING"
         ) : (

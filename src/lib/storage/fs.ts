@@ -149,12 +149,16 @@ export class FsDriver implements StorageDriver {
     return { mode: "proxy", url: `/api/upload?key=${encodeURIComponent(key)}` };
   }
 
-  async read(key: string): Promise<ReadableStream<Uint8Array>> {
+  async read(key: string, range?: { start: number; end: number }): Promise<ReadableStream<Uint8Array>> {
     /* Reading an arbitrary key IS the job of a file store, so Turbopack
      * cannot statically scope this and would otherwise trace the entire
      * project into the standalone output. The path is already validated
      * by toPath(), which refuses anything outside the store root. */
-    return Readable.toWeb(createReadStream(/* turbopackIgnore: true */ toPath(key))) as ReadableStream<Uint8Array>;
+    const stream = createReadStream(
+      /* turbopackIgnore: true */ toPath(key),
+      range ? { start: range.start, end: range.end } : undefined,
+    );
+    return Readable.toWeb(stream) as ReadableStream<Uint8Array>;
   }
 
   async write(key: string, body: ReadableStream<Uint8Array> | Uint8Array) {

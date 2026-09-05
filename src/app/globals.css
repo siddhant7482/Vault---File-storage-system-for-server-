@@ -1776,3 +1776,21 @@ button {
   text-align: center;
   padding: 1rem;
 }
+
+/* Video and audio use the browser's own controls — a custom player is
+   a lot of surface area for a pane whose job is "is this the right
+   file". The preview grows for video because a 118px letterbox tells
+   you nothing. */
+.prev video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--void);
+}
+.prev audio {
+  width: 100%;
+  padding: 0 0.6rem;
+}
+.prev:has(video) {
+  height: 210px;
+}

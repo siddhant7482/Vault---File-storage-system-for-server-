@@ -135,8 +135,19 @@ export class S3Driver implements StorageDriver {
     };
   }
 
-  async read(key: string): Promise<ReadableStream<Uint8Array>> {
-    const r = await s3().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  async read(key: string, range?: { start: number; end: number }): Promise<ReadableStream<Uint8Array>> {
+    const r = await s3().send(
+      new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        /* Same inclusive-end convention as HTTP, which is where S3 took
+         * it from. In practice this path is rarely used with s3 — the
+         * browser talks to Garage directly on a presigned URL and gets
+         * range support from it — but the scanner and any proxy read
+         * should behave identically across drivers. */
+        Range: range ? `bytes=${range.start}-${range.end}` : undefined,
+      }),
+    );
     if (!r.Body) throw new Error(`No body for ${key}`);
     return r.Body.transformToWebStream() as ReadableStream<Uint8Array>;
   }
