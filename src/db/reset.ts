@@ -21,7 +21,10 @@ import { storage } from "@/lib/storage";
    the feature looks broken when it is in fact being careful. Pass
    --bare to skip it and start from nothing.
 
-   Destructive. It deletes every byte in the store.
+   DESTRUCTIVE, and it hard-deletes: no undo window, no backup. It
+   refuses to run against a vault that holds anything unless you pass
+   --force, because it was written as a dev fixture and then run
+   against a deployed vault full of real photos.
    ============================================================ */
 
 /* Two levels, matching the design. Deliberately generic — these are a
@@ -43,16 +46,45 @@ const SKELETON = [
 async function main() {
   const args = process.argv.slice(2);
   const bare = args.includes("--bare");
+  const force = args.includes("--force");
 
   const store = storage();
   const health = await store.health();
   if (!health.ok) throw new Error(`storage unreachable: ${health.detail}`);
   console.log(`storage   ${store.name} — ${health.detail}`);
 
+  /* ---- refuse to run over anything real ----
+   *
+   * This script hard-deletes. It bypasses trashObject's undo window and
+   * calls store.remove() directly, so there is nothing to restore
+   * afterwards and no backup to fall back on until restic is wired up.
+   *
+   * It was written as a dev fixture and then run against a deployed
+   * vault that had been filled with real photos in the meantime. Three
+   * objects and 122 MB went, permanently, because nothing between the
+   * intent and the deletion asked whether the vault was empty.
+   *
+   * So now it counts first and stops. --force is the only way past,
+   * and it has to be typed deliberately every single time. */
+  const existing: { key: string; bytes: number }[] = [];
+  for await (const o of store.list()) existing.push({ key: o.key, bytes: o.bytes });
+  const totalBytes = existing.reduce((n, o) => n + o.bytes, 0);
+
+  if (existing.length && !force) {
+    console.error(`\nREFUSING TO RESET — this vault holds ${existing.length} object${existing.length === 1 ? "" : "s"}, ${fmtBytes(totalBytes)}.`);
+    console.error("");
+    for (const o of existing.slice(0, 10)) console.error(`  ${o.key}  (${fmtBytes(o.bytes)})`);
+    if (existing.length > 10) console.error(`  … and ${existing.length - 10} more`);
+    console.error("");
+    console.error("This deletes bytes permanently. There is no undo window and no backup.");
+    console.error("If you are certain: pnpm reset -- --force");
+    process.exit(1);
+  }
+
   /* ---- bytes ---- */
   let removed = 0;
   let freed = 0;
-  for await (const o of store.list()) {
+  for (const o of existing) {
     await store.remove(o.key);
     removed += 1;
     freed += o.bytes;
